@@ -2,9 +2,11 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <time.h>
-#include "math.h"
+#include <math.h>
 
 #define maxHiddenLayers 3
+#define min -1
+#define max 1
 
 enum weightCase{
     oneWeight,
@@ -17,18 +19,19 @@ struct matrix_t
 {
 	uint8_t rows;
 	uint8_t columns;
-	double **ptr;
+	float **ptr;
 };
 
 typedef struct matrix_t *weights_t;
 typedef struct matrix_t *input_t;
 typedef struct matrix_t *output_t;
+typedef struct matrix_t *desired_output_t;
 
 struct neural_t
 {
-	double input;
-	double output;
-	double *threshold;
+	float **input;
+	float **output;
+	float *threshold;
 };
 
 typedef struct neural_t *neural;
@@ -43,17 +46,33 @@ typedef struct layers_t *layers;
 
 struct neuralNetwork_t
 {
+	uint8_t example;
+	uint8_t examples;
 	uint8_t layersNumber;
 	uint8_t weightsNumber;
 	uint8_t neuralsInputNumber;
 	uint8_t neuralsOutputNumber;
 	input_t inputNeural;
 	output_t outputNeural;
+	desired_output_t desired_output;
 	weights_t weights;
 	layers Hidderlayers;
+	float *threshold;
 };
 
 typedef struct neuralNetwork_t *neuralNetworks;
+
+static float sigmoide(float x) 
+{
+	return 1.0 / (1.0 + exp(-x));
+}
+
+float rand_generator()
+{
+    float scale = rand() / (float) RAND_MAX; 
+    return min + scale * ( max - min );      
+}
+
 
 static void set_weights_number(neuralNetworks neuralNetwork, uint8_t numberMatrices)
 {
@@ -149,31 +168,69 @@ neuralNetworks create_neural_network()
 		perror("error allocating memory\n\r");
 		exit(1);
 	}
+	printf("Enter the number of examples of the neural network\n\r");
+	scanf("%hhu", &numberExamples);
+	neuralNetwork->examples = numberExamples;
+	printf("Enter the number of neural network input variables\n\r");
+	scanf("%hhu", &numberInputVariables);
+	neuralNetwork->neuralsInputNumber = numberInputVariables;
 	for(uint8_t i = 0; i < get_layer_number(neuralNetwork); i++)
 	{
 		printf("Enter the number of neurons in the hidden layer #%hhu\n\r", i + 1);
 		scanf("%hhu", &numberNeurals);
 		neuralNetwork->Hidderlayers[i].neuralsNumber = numberNeurals;
-		neuralNetwork->Hidderlayers[i].neural = (neural)malloc(sizeof(struct neural_t)*numberNeurals);
+		neuralNetwork->Hidderlayers[i].neural = (neural)malloc(sizeof(struct neural_t)*neuralNetwork->Hidderlayers[i].neuralsNumber);
 		if (!neuralNetwork->Hidderlayers[i].neural)
 		{
 			perror("error allocating memory\n\r");
 			exit(1);
 		}
+		neuralNetwork->Hidderlayers[i].neural->threshold = (float*)malloc(sizeof(float)*neuralNetwork->Hidderlayers[i].neuralsNumber);
+		if (!neuralNetwork->Hidderlayers[i].neural->threshold)
+		{
+			perror("error allocating memory\n\r");
+			exit(1);
+		}
+		neuralNetwork->Hidderlayers[i].neural->input = (float**)malloc(sizeof(float*)*neuralNetwork->examples);
+		if (!neuralNetwork->Hidderlayers[i].neural->input)
+		{
+			perror("error allocating memory\n\r");
+			exit(1);
+		}
+		for (uint8_t j = 0; j < neuralNetwork->examples; j++)
+		{
+			neuralNetwork->Hidderlayers[i].neural->input[j] = (float*)malloc(sizeof(float)*neuralNetwork->Hidderlayers[i].neuralsNumber);
+			if (!neuralNetwork->Hidderlayers[i].neural->input[j])
+			{
+				perror("error allocating memory\n\r");
+				exit(1);
+			}	
+		}
+		neuralNetwork->Hidderlayers[i].neural->output = (float**)malloc(sizeof(float)*neuralNetwork->examples);
+		if (!neuralNetwork->Hidderlayers[i].neural->output)
+		{
+			perror("error allocating memory\n\r");
+			exit(1);
+		}
+		for (uint8_t j = 0; j < neuralNetwork->examples; j++)
+		{
+			neuralNetwork->Hidderlayers[i].neural->output[j] = (float*)malloc(sizeof(float)*neuralNetwork->Hidderlayers[i].neuralsNumber);
+			if (!neuralNetwork->Hidderlayers[i].neural->output[j])
+			{
+				perror("error allocating memory\n\r");
+				exit(1);
+			}	
+		}
 	}
     neuralNetwork->inputNeural = (input_t)malloc(sizeof(struct matrix_t));
+	neuralNetwork->inputNeural->rows = neuralNetwork->examples;
+	neuralNetwork->inputNeural->columns = neuralNetwork->neuralsInputNumber;
     if (!neuralNetwork->inputNeural)
 	{
 		perror("error allocating memory\n\r");
 		exit(1);
 	}
-    printf("Enter the number of examples of the neural network\n\r");
-    scanf("%hhu", &numberExamples);
-    printf("Enter the number of neural network input variables\n\r");
-    scanf("%hhu", &numberInputVariables);
-    set_matrix_input_rows(neuralNetwork, numberExamples);
-    set_matrix_input_columns(neuralNetwork, numberInputVariables);
-    neuralNetwork->inputNeural->ptr = (double**)malloc(sizeof(double*)*get_matrix_input_rows(neuralNetwork));
+    neuralNetwork->inputNeural->ptr = (float**)malloc(sizeof(float*)*get_matrix_input_rows(neuralNetwork));
     if (!neuralNetwork->inputNeural->ptr)
 	{
 		perror("error allocating memory\n\r");
@@ -181,7 +238,7 @@ neuralNetworks create_neural_network()
 	}
     for(uint8_t i = 0; i < get_matrix_input_rows(neuralNetwork); i++)
     {
-        neuralNetwork->inputNeural->ptr[i] = (double*)malloc(sizeof(double)*get_matrix_input_columns(neuralNetwork));
+        neuralNetwork->inputNeural->ptr[i] = (float*)malloc(sizeof(float)*get_matrix_input_columns(neuralNetwork));
         if (!neuralNetwork->inputNeural->ptr[i])
         {
             perror("error allocating memory\n\r");
@@ -198,7 +255,7 @@ neuralNetworks create_neural_network()
     printf("Enter the number of neural network output variables\n\r");
     scanf("%hhu", &numberOutVariables);
     set_matrix_output_columns(neuralNetwork, numberOutVariables);
-    neuralNetwork->outputNeural->ptr = (double**)malloc(sizeof(double*)*get_matrix_output_rows(neuralNetwork));
+    neuralNetwork->outputNeural->ptr = (float**)malloc(sizeof(float*)*get_matrix_output_rows(neuralNetwork));
     if (!neuralNetwork->outputNeural->ptr)
 	{
 		perror("error allocating memory\n\r");
@@ -206,14 +263,41 @@ neuralNetworks create_neural_network()
 	}
     for(uint8_t i = 0; i < get_matrix_output_rows(neuralNetwork); i++)
     {
-        neuralNetwork->outputNeural->ptr[i] = (double*)malloc(sizeof(double)*get_matrix_output_columns(neuralNetwork));
+        neuralNetwork->outputNeural->ptr[i] = (float*)malloc(sizeof(float)*get_matrix_output_columns(neuralNetwork));
         if (!neuralNetwork->outputNeural->ptr[i])
         {
             perror("error allocating memory\n\r");
             exit(1);
         }
     }
-    set_weights_number(neuralNetwork, numberHiddenLayers + 1);
+	neuralNetwork->desired_output = (desired_output_t)malloc(sizeof(struct matrix_t));
+	if(!neuralNetwork->desired_output)
+	{
+		perror("error allocating memory\n\r");
+		exit(1);
+	}
+	neuralNetwork->desired_output->ptr = (float**)malloc(sizeof(float*)*get_matrix_output_rows(neuralNetwork));
+	if(!neuralNetwork->desired_output->ptr)
+	{
+		perror("error allocating memory\n\r");
+		exit(1);
+	}
+	for(uint8_t i = 0; i < get_matrix_output_rows(neuralNetwork); i++)
+    {
+        neuralNetwork->desired_output->ptr[i] = (float*)malloc(sizeof(float)*get_matrix_output_columns(neuralNetwork));
+        if (!neuralNetwork->desired_output->ptr[i])
+        {
+            perror("error allocating memory\n\r");
+            exit(1);
+        }
+    }
+	neuralNetwork->threshold = (float*)malloc(sizeof(float)*neuralNetwork->neuralsOutputNumber);
+    if (!neuralNetwork->threshold)
+    {
+		perror("error allocating memory\n\r");
+		exit(1);
+    }
+	set_weights_number(neuralNetwork, numberHiddenLayers + 1);
 	neuralNetwork->weights = (weights_t)malloc(sizeof(struct matrix_t)*get_weights_number(neuralNetwork));
 	if (!neuralNetwork->weights)
 	{
@@ -230,7 +314,6 @@ neuralNetworks create_neural_network()
             cases = twoWeight;
             break;
         case twoWeight:
-			printf("%hhu\n\r",get_weights_number(neuralNetwork));
             if(get_weights_number(neuralNetwork) == twoWeight + 1)
             {
 				neuralNetwork->weights[i].rows = neuralNetwork->Hidderlayers[oneWeight].neuralsNumber;
@@ -241,8 +324,6 @@ neuralNetworks create_neural_network()
             {
 				neuralNetwork->weights[i].rows = neuralNetwork->Hidderlayers[oneWeight].neuralsNumber;
 				neuralNetwork->weights[i].columns = neuralNetwork->Hidderlayers[twoWeight].neuralsNumber;
-                printf("%hhu\n\r",neuralNetwork->weights[i].rows);
-				printf("%hhu\n\r",neuralNetwork->weights[i].columns);
 				cases = threeWeight;
                 break;
             }
@@ -269,7 +350,7 @@ neuralNetworks create_neural_network()
         default:
             break;
         }
-		neuralNetwork->weights[i].ptr = (double**)malloc(sizeof(double*)*neuralNetwork->weights[i].rows);
+		neuralNetwork->weights[i].ptr = (float**)malloc(sizeof(float*)*neuralNetwork->weights[i].rows);
 		if (!neuralNetwork->weights[i].ptr)
 		{
 			perror("error allocating memory\n\r");
@@ -277,7 +358,7 @@ neuralNetworks create_neural_network()
 		}
 		for(uint8_t j = 0; j < neuralNetwork->weights[i].rows; j++)
 		{
-			neuralNetwork->weights[i].ptr[j] = (double*)malloc(sizeof(double)*neuralNetwork->weights[i].columns);
+			neuralNetwork->weights[i].ptr[j] = (float*)malloc(sizeof(float)*neuralNetwork->weights[i].columns);
 			if (!neuralNetwork->weights[i].ptr[j])
 			{
 				perror("error allocating memory\n\r");
@@ -290,20 +371,47 @@ neuralNetworks create_neural_network()
 
 void load_neural_network(neuralNetworks neuralNetwork)
 {
-	enum weightCase cases = oneWeight;
+	float value;
 	srand((unsigned int)time(NULL));
 	for (uint8_t i = 0; i < get_matrix_input_rows(neuralNetwork); i++)
 	{
 		for (uint8_t j = 0; j < get_matrix_input_columns(neuralNetwork); j++)
 		{
-			neuralNetwork->inputNeural->ptr[i][j] =  rand() / (double) RAND_MAX;
+			printf("Enter the value of variable #%hhu from example #%hhu\n\r", j + 1, i + 1);
+			scanf("%f", &value);
+			neuralNetwork->inputNeural->ptr[i][j] =  value;
 		}
 	}
 	for (uint8_t i = 0; i < get_matrix_output_rows(neuralNetwork); i++)
 	{
 		for (uint8_t j = 0; j < get_matrix_output_columns(neuralNetwork); j++)
 		{
-			neuralNetwork->outputNeural->ptr[i][j] =  rand() / (double) RAND_MAX;
+			printf("Enter the value of output #%hhu from example #%hhu\n\r", j + 1, i + 1);
+			scanf("%f", &value);
+			neuralNetwork->desired_output->ptr[i][j]= value;
+		}
+	}
+	for (uint8_t i = 0; i < get_matrix_output_rows(neuralNetwork); i++)
+	{
+		for (uint8_t j = 0; j < get_matrix_output_columns(neuralNetwork); j++)
+		{
+			neuralNetwork->outputNeural->ptr[i][j] =  0.0;
+			neuralNetwork->threshold[j] = rand_generator();
+		}
+	}
+	for (uint8_t i = 0; i < neuralNetwork->layersNumber; i++)
+	{
+		for (uint8_t j = 0; j < neuralNetwork->Hidderlayers[i].neuralsNumber; j++)
+		{
+			neuralNetwork->Hidderlayers[i].neural->threshold[j] = rand_generator();
+		}
+		for (uint8_t k = 0; k < neuralNetwork->inputNeural->rows; k++)
+		{
+			for (uint8_t j = 0; j < neuralNetwork->Hidderlayers[i].neuralsNumber; j++)
+			{
+				neuralNetwork->Hidderlayers[i].neural->input[k][j]  = 0.0;
+				neuralNetwork->Hidderlayers[i].neural->output[k][j] = 0.0;
+			}
 		}
 	}
 	for(uint8_t i = 0; i < get_weights_number(neuralNetwork); i++)
@@ -312,14 +420,211 @@ void load_neural_network(neuralNetworks neuralNetwork)
 		{	
 			for (uint8_t k = 0; k < neuralNetwork->weights[i].columns; k++)
 			{
-				neuralNetwork->weights[i].ptr[j][k] =  rand() / (double) RAND_MAX;
+				neuralNetwork->weights[i].ptr[j][k] = rand_generator();
 			}
 		}
 	}
 }
 
-static double output_neural_network(neuralNetworks neuralNetwork)
+static void a_2(neuralNetworks neuralNetwork, uint8_t k)
 {
+    float acum = 0;
+	uint8_t i = neuralNetwork->example;
+	for(uint8_t j = 0; j < neuralNetwork->inputNeural->columns; j++)
+	{
+		acum += neuralNetwork->inputNeural->ptr[i][j]*neuralNetwork->weights[0].ptr[j][k];
+	}
+	neuralNetwork->Hidderlayers[0].neural->input[i][k] = acum + neuralNetwork->Hidderlayers[0].neural->threshold[k];
+	neuralNetwork->Hidderlayers[0].neural->output[i][k] = sigmoide(neuralNetwork->Hidderlayers[0].neural->input[i][k]);
+}
+
+static void a_3(neuralNetworks neuralNetwork, uint8_t p)
+{
+    float acum = 0;
+	uint8_t i = neuralNetwork->example;
+	for(uint8_t k = 0; k < neuralNetwork->Hidderlayers[0].neuralsNumber; k++)
+	{
+		a_2(neuralNetwork, k);
+		acum += neuralNetwork->Hidderlayers[0].neural->output[i][k]*neuralNetwork->weights[1].ptr[k][p];
+	}
+	neuralNetwork->Hidderlayers[1].neural->input[i][p] = acum + neuralNetwork->Hidderlayers[1].neural->threshold[p];
+	neuralNetwork->Hidderlayers[1].neural->output[i][p] = sigmoide(neuralNetwork->Hidderlayers[1].neural->input[i][p]);
+}
+
+static void a_4(neuralNetworks neuralNetwork, uint8_t t)
+{
+    float acum = 0;
+	uint8_t i = neuralNetwork->example;
+	for(uint8_t p = 0; p < neuralNetwork->Hidderlayers[1].neuralsNumber; p++)
+	{
+		a_3(neuralNetwork, p);
+		acum += neuralNetwork->Hidderlayers[1].neural->output[i][p]*neuralNetwork->weights[2].ptr[p][t];
+	}
+	neuralNetwork->Hidderlayers[2].neural->input[i][t] = acum + neuralNetwork->Hidderlayers[2].neural->threshold[t];
+	neuralNetwork->Hidderlayers[2].neural->output[i][t] = sigmoide(neuralNetwork->Hidderlayers[2].neural->input[i][t]);
+}
+
+static void output_neural_network(neuralNetworks neuralNetwork, uint8_t output)
+{
+	uint8_t target = neuralNetwork->layersNumber;
+	float acum = 0;
+	switch (target)
+	{
+	case 1:
+	for (uint8_t i = 0; i < neuralNetwork->inputNeural->rows; i++)
+	{
+		neuralNetwork->example = i;
+		float acum = 0;
+		for(uint8_t k = 0; k < neuralNetwork->Hidderlayers[0].neuralsNumber; k++)
+		{
+			a_2(neuralNetwork, k);
+			acum += neuralNetwork->Hidderlayers[0].neural->output[i][k]*neuralNetwork->weights[1].ptr[k][output];
+		}
+		neuralNetwork->outputNeural->ptr[i][output] = sigmoide(acum + neuralNetwork->threshold[output]);
+	}
+	break;
+	case 2:
+	for (uint8_t i = 0; i < neuralNetwork->inputNeural->rows; i++)
+	{
+		neuralNetwork->example = i;
+		float acum = 0;
+		for(uint8_t p = 0; p < neuralNetwork->Hidderlayers[1].neuralsNumber; p++)
+		{
+			a_3(neuralNetwork, p);
+			acum += neuralNetwork->Hidderlayers[1].neural->output[i][p]*neuralNetwork->weights[2].ptr[p][output];
+		}
+		neuralNetwork->outputNeural->ptr[i][output] = sigmoide(acum + neuralNetwork->threshold[output]);
+	}
+	break;
+	case 3:
+	for (uint8_t i = 0; i < neuralNetwork->inputNeural->rows; i++)
+	{
+		neuralNetwork->example = i;
+		float acum = 0;
+		for(uint8_t t = 0; t < neuralNetwork->Hidderlayers[2].neuralsNumber; t++)
+		{
+			a_4(neuralNetwork, t);
+			acum += neuralNetwork->Hidderlayers[2].neural->output[i][t]*neuralNetwork->weights[3].ptr[t][output];
+		}
+		neuralNetwork->outputNeural->ptr[i][output] = sigmoide(acum + neuralNetwork->threshold[output]);
+	}
+	break;
+	default:
+		break;
+	}
+}
+
+void back_propagation(neuralNetworks neuralNetwork)
+{
+	uint8_t target = neuralNetwork->layersNumber;
+	float error[neuralNetwork->outputNeural->rows][neuralNetwork->outputNeural->columns];
+	float alfa = 0.65;
+	for (uint8_t i = 0; i < neuralNetwork->outputNeural->rows; i++)
+	{
+		for (uint8_t p = 0; p < neuralNetwork->outputNeural->columns; p++)
+		{
+			output_neural_network(neuralNetwork, p);
+			error[i][p] = neuralNetwork->outputNeural->ptr[i][p] - neuralNetwork->desired_output->ptr[i][p];
+		}
+	}
+	switch (target)
+	{
+	case 1:
+		for (uint8_t i = 0; i < neuralNetwork->outputNeural->rows; i++)
+		{
+			for (uint8_t p = 0; p < neuralNetwork->outputNeural->columns; p++)
+			{
+				float a_pi = neuralNetwork->outputNeural->ptr[i][p];
+				float s = neuralNetwork->desired_output->ptr[i][p];
+				for (uint8_t j = 0; j < neuralNetwork->inputNeural->columns; j++)
+				{
+					for (uint8_t k = 0; k < neuralNetwork->Hidderlayers[0].neuralsNumber; k++)
+					{
+						float a_k  = neuralNetwork->Hidderlayers[0].neural->output[i][k];
+						float a_ij = neuralNetwork->inputNeural->ptr[i][j];
+						
+						neuralNetwork->weights[1].ptr[k][p] = neuralNetwork->weights[1].ptr[k][p] - alfa*error[i][p]*a_pi*(1 - a_pi)*a_k;
+						neuralNetwork->threshold[p] = neuralNetwork->threshold[p] - alfa*error[i][p]*a_pi*(1 - a_pi);
+						
+						neuralNetwork->weights[0].ptr[j][k] = neuralNetwork->weights[0].ptr[j][k] - alfa*error[i][p]*a_pi*(1 - a_pi)*neuralNetwork->weights[1].ptr[k][p]*a_k*(1 - a_k)*a_ij;
+						neuralNetwork->Hidderlayers[0].neural->threshold[k] = neuralNetwork->Hidderlayers[0].neural->threshold[k] - alfa*error[i][p]*a_pi*(1 - a_pi)*neuralNetwork->weights[1].ptr[k][p]*a_k*(1 - a_k);
+					}
+				}
+			}	
+		}
+		break;
+	case 2:
+		for (uint8_t i = 0; i < neuralNetwork->outputNeural->rows; i++)
+		{
+			for (uint8_t t = 0; t < neuralNetwork->outputNeural->columns; t++)
+			{
+				float a_ti = neuralNetwork->outputNeural->ptr[i][t];
+				float s = neuralNetwork->desired_output->ptr[i][t];
+				for (uint8_t j = 0; j < neuralNetwork->inputNeural->columns; j++)
+				{
+					for (uint8_t k = 0; k < neuralNetwork->Hidderlayers[0].neuralsNumber; k++)
+					{
+						for (uint8_t p = 0; p < neuralNetwork->Hidderlayers[1].neuralsNumber; p++)
+						{
+							float a_p = neuralNetwork->Hidderlayers[1].neural->output[i][p];
+							float a_k  = neuralNetwork->Hidderlayers[0].neural->output[i][k];
+							float a_ij = neuralNetwork->inputNeural->ptr[i][j];
+
+							neuralNetwork->weights[2].ptr[p][t] = neuralNetwork->weights[2].ptr[p][t] - alfa*error[i][t]*a_ti*(1 - a_ti)*a_p;
+							neuralNetwork->threshold[t] = neuralNetwork->threshold[t] - alfa*error[i][t]*a_ti*(1 - a_ti);
+							
+							neuralNetwork->weights[1].ptr[k][p] = neuralNetwork->weights[1].ptr[k][p] - alfa*error[i][t]*a_ti*(1 - a_ti)*neuralNetwork->weights[2].ptr[p][t]*a_p*(1 - a_p)*a_k;
+							neuralNetwork->Hidderlayers[1].neural->threshold[p] = neuralNetwork->Hidderlayers[1].neural->threshold[p] - alfa*error[i][t]*a_ti*(1 - a_ti)*neuralNetwork->weights[2].ptr[p][t]*a_p*(1 - a_p);
+							
+							neuralNetwork->weights[0].ptr[j][k] = neuralNetwork->weights[0].ptr[j][k] - alfa*error[i][t]*a_ti*(1 - a_ti)*neuralNetwork->weights[2].ptr[p][t]*a_p*(1 - a_p)*neuralNetwork->weights[1].ptr[k][p]*a_k*(1 - a_k)*a_ij;
+							neuralNetwork->Hidderlayers[0].neural->threshold[k] = neuralNetwork->Hidderlayers[0].neural->threshold[k] - alfa*error[i][t]*a_ti*(1 - a_ti)*neuralNetwork->weights[2].ptr[p][t]*a_p*(1 - a_p)*neuralNetwork->weights[1].ptr[k][p]*a_k*(1 - a_k);
+						}
+					}
+				}
+			}	
+		}
+		break;
+	case 3:
+		for (uint8_t i = 0; i < neuralNetwork->outputNeural->rows; i++)
+		{
+			for (uint8_t v = 0; v < neuralNetwork->outputNeural->columns; v++)
+			{
+				float a_vi = neuralNetwork->outputNeural->ptr[i][v];
+				float s = neuralNetwork->desired_output->ptr[i][v];
+				for (uint8_t j = 0; j < neuralNetwork->inputNeural->columns; j++)
+				{
+					for (uint8_t k = 0; k < neuralNetwork->Hidderlayers[0].neuralsNumber; k++)
+					{
+						for (uint8_t p = 0; p < neuralNetwork->Hidderlayers[1].neuralsNumber; p++)
+						{
+							for (uint8_t t = 0; t < neuralNetwork->Hidderlayers[2].neuralsNumber; t++)
+							{
+								float a_t  = neuralNetwork->Hidderlayers[2].neural->output[i][t];
+								float a_p  = neuralNetwork->Hidderlayers[1].neural->output[i][p];
+								float a_k  = neuralNetwork->Hidderlayers[0].neural->output[i][k];
+								float a_ij = neuralNetwork->inputNeural->ptr[i][j];
+
+								neuralNetwork->weights[3].ptr[t][v] = neuralNetwork->weights[3].ptr[t][v] - alfa*error[i][v]*a_vi*(1 - a_vi)*a_t;
+								neuralNetwork->threshold[v] = neuralNetwork->threshold[v] - alfa*error[i][v]*a_vi*(1 - a_vi);
+
+								neuralNetwork->weights[2].ptr[p][t] = neuralNetwork->weights[2].ptr[p][t] - alfa*error[i][t]*a_vi*(1 - a_vi)*neuralNetwork->weights[3].ptr[t][v]*a_t*(1 - a_t)*a_p;
+								neuralNetwork->Hidderlayers[2].neural->threshold[t] = neuralNetwork->Hidderlayers[2].neural->threshold[t] - alfa*error[i][t]*a_vi*(1 - a_vi)*neuralNetwork->weights[3].ptr[t][v]*a_t*(1 - a_t);
+								
+								neuralNetwork->weights[1].ptr[k][p] = neuralNetwork->weights[1].ptr[k][p] - alfa*error[i][t]*a_vi*(1 - a_vi)*neuralNetwork->weights[3].ptr[t][v]*a_t*(1 - a_t)*neuralNetwork->weights[2].ptr[p][t]*a_p*(1 - a_p)*a_k;
+								neuralNetwork->Hidderlayers[1].neural->threshold[p] = neuralNetwork->Hidderlayers[1].neural->threshold[p] - alfa*error[i][t]*a_vi*(1 - a_vi)*neuralNetwork->weights[3].ptr[t][v]*a_t*(1 - a_t)*neuralNetwork->weights[2].ptr[p][t]*a_p*(1 - a_p);
+								
+								neuralNetwork->weights[0].ptr[j][k] = neuralNetwork->weights[0].ptr[j][k] - alfa*error[i][t]*a_vi*(1 - a_vi)*neuralNetwork->weights[3].ptr[t][v]*a_t*(1 - a_t)*neuralNetwork->weights[2].ptr[p][t]*a_p*(1 - a_p)*neuralNetwork->weights[1].ptr[k][p]*a_k*(1 - a_k)*a_ij;
+								neuralNetwork->Hidderlayers[0].neural->threshold[k] = neuralNetwork->Hidderlayers[0].neural->threshold[k] - alfa*error[i][t]*a_vi*(1 - a_vi)*neuralNetwork->weights[3].ptr[t][v]*a_t*(1 - a_t)*neuralNetwork->weights[2].ptr[p][t]*a_p*(1 - a_p)*neuralNetwork->weights[1].ptr[k][p]*a_k*(1 - a_k);
+							}
+						}
+					}
+				}
+			}	
+		}
+		break;
+	default:
+		break;
+	}
 
 }
 
@@ -335,13 +640,25 @@ void show_input_neural(neuralNetworks neuralNetwork)
 	}
 }
 
+void show_desired_output(neuralNetworks neuralNetwork)
+{
+	for (uint8_t i = 0; i < get_matrix_output_rows(neuralNetwork); i++)
+	{
+		for (uint8_t j = 0; j < get_matrix_output_columns(neuralNetwork); j++)
+		{
+			printf("%.2f ", neuralNetwork->desired_output->ptr[i][j]);
+		}
+		printf("\n\r");
+	}
+}
+
 void show_output_neural(neuralNetworks neuralNetwork)
 {
 	for (uint8_t i = 0; i < get_matrix_output_rows(neuralNetwork); i++)
 	{
 		for (uint8_t j = 0; j < get_matrix_output_columns(neuralNetwork); j++)
 		{
-			printf("%.2f ", neuralNetwork->outputNeural->ptr[i][j]);
+			printf("%f ", neuralNetwork->outputNeural->ptr[i][j]);
 		}
 		printf("\n\r");
 	}
@@ -363,12 +680,50 @@ void show_weight(neuralNetworks neuralNetwork)
 	}
 }
 
+void show_threshold(neuralNetworks neuralNetwork)
+{
+	for (uint8_t i = 0; i < neuralNetwork->layersNumber; i++)
+	{
+		for (uint8_t j = 0; j < neuralNetwork->Hidderlayers[i].neuralsNumber; j++)
+		{
+			printf("%.2f ", neuralNetwork->Hidderlayers[i].neural->threshold[j]);
+		}
+		printf("\n\r");
+	}
+	for (uint8_t i = 0; i < neuralNetwork->outputNeural->columns; i++)
+	{
+		printf("%.2f ", neuralNetwork->threshold[i]);
+	}
+	printf("\n\r");
+}
+
+void show_neural_networks(neuralNetworks neuralNetwork)
+{
+	show_input_neural(neuralNetwork);
+	printf("\n\r");
+	show_output_neural(neuralNetwork);
+	printf("\n\r");
+	show_weight(neuralNetwork);
+	printf("\n\r");
+	show_threshold(neuralNetwork);
+}
+
 int main()
 {
     neuralNetworks neuralNetwork = create_neural_network();
 	load_neural_network(neuralNetwork);
 	show_input_neural(neuralNetwork);
+	show_desired_output(neuralNetwork);
+	for (uint8_t output = 0; output < neuralNetwork->outputNeural->columns; output++)
+	{
+		output_neural_network(neuralNetwork, output);
+	}
 	show_output_neural(neuralNetwork);
-	show_weight(neuralNetwork);
+	for (uint16_t i = 0; i < 1000; i++)
+	{
+		back_propagation(neuralNetwork);
+	}
+	printf("###################\n\r");
+	show_output_neural(neuralNetwork);
     return 0;
 }
