@@ -584,23 +584,3 @@ void show_neural_networks(neuralNetworks neuralNetwork)
 	printf("\n\r");
 	show_threshold(neuralNetwork);
 }
-
-int main()
-{
-    neuralNetworks neuralNetwork = create_neural_network();
-	load_neural_network(neuralNetwork);
-	show_input_neural(neuralNetwork);
-	show_desired_output(neuralNetwork);
-	for (uint8_t output = 0; output < neuralNetwork->outputNeural->columns; output++)
-	{
-		output_neural_network(neuralNetwork, output);
-	}
-	show_output_neural(neuralNetwork);
-	for (uint16_t i = 0; i < 1000; i++)
-	{
-		back_propagation(neuralNetwork);
-	}
-	printf("###################\n\r");
-	show_output_neural(neuralNetwork);
-    return 0;
-}
